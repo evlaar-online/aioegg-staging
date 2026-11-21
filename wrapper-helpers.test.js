@@ -256,8 +256,9 @@ assert.strictEqual(
 );
 assert.deepStrictEqual(Object.keys(egg.docker_images), ["ghcr.io/evlaar-online/aioegg-staging:staging"]);
 assert.strictEqual(egg.docker_images["ghcr.io/evlaar-online/aioegg-staging:staging"], "ghcr.io/evlaar-online/aioegg-staging:staging");
-assert.match(egg.startup, /-logfile \/dev\/null/);
+assert.match(egg.startup, /-logfile - /);
 assert.doesNotMatch(egg.startup, /LOG_FILE/);
+assert.doesNotMatch(egg.startup, /-logfile \/dev\/null/);
 
 const liveEgg = JSON.parse(fs.readFileSync("./egg-rust--all-in-one4-0.json", "utf8"));
 assert.match(liveEgg.startup, /-logfile "\$\{LOG_FILE/);

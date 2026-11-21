@@ -15,7 +15,7 @@ const {
 } = require("./wrapper-helpers");
 
 // LOG_FILE is a timestamped transcript of the panel console. console.log stays unstamped
-// so Wings and the live console are unchanged. Rust's own -logfile is /dev/null.
+// so Wings and the live console are unchanged. Unity -logfile - keeps the game log on stdout.
 let consoleLogFd = null;
 function closeConsoleLog() {
 	if (consoleLogFd == null) return;
