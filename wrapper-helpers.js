@@ -195,6 +195,108 @@ function formatLogTimestamp(date) {
 	return formatPosixDate("%Y-%m-%d %H:%M:%S", date);
 }
 
+const LOG_TIMESTAMP_PREFIX = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) /;
+
+function hasLogTimestamp(line) {
+	return LOG_TIMESTAMP_PREFIX.test(String(line));
+}
+
+function unstampedLogLine(line) {
+	return String(line).replace(LOG_TIMESTAMP_PREFIX, "");
+}
+
+function stampLogLines(text, date) {
+	const stamp = formatLogTimestamp(date);
+	const parts = String(text == null ? "" : text).replace(/\r/g, "").split("\n");
+	const lines = [];
+	for (let i = 0; i < parts.length; i++) {
+		if (!parts[i]) continue;
+		lines.push(hasLogTimestamp(parts[i]) ? parts[i] : stamp + " " + parts[i]);
+	}
+	return lines;
+}
+
+function readShellArg(text, start) {
+	const quote = text[start];
+	if (quote === "\"" || quote === "'") {
+		let end = start + 1;
+		while (end < text.length && text[end] !== quote) end++;
+		return { value: text.slice(start + 1, end), end: Math.min(end + 1, text.length) };
+	}
+	let end = start;
+	while (end < text.length) {
+		if (text[end] === "$" && text[end + 1] === "(") {
+			end += 2;
+			let depth = 1;
+			while (end < text.length && depth > 0) {
+				if (text[end] === "(") depth++;
+				else if (text[end] === ")") depth--;
+				end++;
+			}
+			continue;
+		}
+		if (/\s/.test(text[end])) break;
+		end++;
+	}
+	return { value: text.slice(start, end), end };
+}
+
+// Unity -logfile <file> keeps the player log off stdout. Point that argument at
+// stdout and remember the file so it can be followed if Unity still writes it.
+function retargetUnityLogfile(startup) {
+	const source = String(startup);
+	const marker = /(^|\s)-logfile(?:\s+|=)/g;
+	let unityLogPath = "";
+	let out = "";
+	let last = 0;
+	let match;
+	while ((match = marker.exec(source)) !== null) {
+		const lead = match[1];
+		const argPos = marker.lastIndex;
+		const arg = readShellArg(source, argPos);
+		if (arg.end <= argPos) {
+			marker.lastIndex = match.index + match[0].length;
+			out += source.slice(last, marker.lastIndex);
+			last = marker.lastIndex;
+			continue;
+		}
+		out += source.slice(last, match.index) + lead;
+		if (!arg.value || arg.value === "-") {
+			out += source.slice(match.index + lead.length, arg.end);
+		} else {
+			unityLogPath = arg.value;
+			out += "-logfile -";
+		}
+		last = arg.end;
+		marker.lastIndex = arg.end;
+	}
+	out += source.slice(last);
+	return { startup: out, unityLogPath };
+}
+
+// Drops a line when stdout and a followed Unity log both deliver the same occurrence.
+function createLogLineDeduper(limit) {
+	const max = typeof limit === "number" && limit > 0 ? Math.floor(limit) : 500;
+	const pending = { stdout: [], file: [] };
+
+	return function accept(source, rawLine) {
+		const key = unstampedLogLine(rawLine);
+		if (!key) return false;
+		const otherName = source === "file" ? "stdout" : "file";
+		const mineName = source === "file" ? "file" : "stdout";
+		const other = pending[otherName];
+		const idx = other.indexOf(key);
+		if (idx !== -1) {
+			other.splice(idx, 1);
+			return false;
+		}
+		const mine = pending[mineName];
+		mine.push(key);
+		if (mine.length > max) mine.shift();
+		return true;
+	};
+}
+
 // Expands the egg's $(date +FORMAT) path token once. Other text is kept as a literal path.
 function expandLogFilePath(raw, formatDate) {
 	const value = String(raw == null ? "" : raw).trim();
@@ -202,20 +304,14 @@ function expandLogFilePath(raw, formatDate) {
 	return value.replace(/\$\(date \+([^)\r\n]+)\)/g, (_, format) => formatDate(format));
 }
 
-// Prefixes each console line for the log file. The caller still prints the original text.
+// Prefixes each log line once. Lines that already start with YYYY-MM-DD HH:MM:SS are unchanged.
 function createTimestampedLogWriter(options) {
 	const now = typeof options.now === "function" ? options.now : () => new Date();
 	const writeLine = options.writeLine;
 
 	return function writeTimestamped(text) {
-		const stamp = formatLogTimestamp(now());
-		const parts = String(text == null ? "" : text).replace(/\r/g, "").split("\n");
-		let out = "";
-		for (let i = 0; i < parts.length; i++) {
-			if (!parts[i]) continue;
-			out += stamp + " " + parts[i] + "\n";
-		}
-		if (out) writeLine(out);
+		const lines = stampLogLines(text, now());
+		if (lines.length) writeLine(lines.join("\n") + "\n");
 	};
 }
 
@@ -226,6 +322,11 @@ module.exports = {
 	createConsoleInputHandler,
 	formatPosixDate,
 	formatLogTimestamp,
+	hasLogTimestamp,
+	unstampedLogLine,
+	stampLogLines,
 	expandLogFilePath,
+	retargetUnityLogfile,
+	createLogLineDeduper,
 	createTimestampedLogWriter
 };
