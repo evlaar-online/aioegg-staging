@@ -5,6 +5,7 @@ const fs = require("fs");
 const {
 	createGameOutputHandler,
 	createRconCommandTracker,
+	isUnsolicitedRconBroadcast,
 	createRconMessageHandler,
 	createConsoleInputHandler,
 	createTimestampedLogWriter,
@@ -245,6 +246,11 @@ assert.ok(stampLogLines("Server startup complete", fixedNow)[0].includes("Server
 assert.strictEqual(hasLogTimestamp("15-11-2026 21:04:05 Server startup complete"), true);
 assert.strictEqual(hasLogTimestamp("2026-11-15 21:04:05 Server startup complete"), true);
 assert.strictEqual(hasLogTimestamp("Server startup complete"), false);
+assert.strictEqual(isUnsolicitedRconBroadcast(0), true);
+assert.strictEqual(isUnsolicitedRconBroadcast(-1), true);
+assert.strictEqual(isUnsolicitedRconBroadcast("0"), true);
+assert.strictEqual(isUnsolicitedRconBroadcast(undefined), true);
+assert.strictEqual(isUnsolicitedRconBroadcast(1), false);
 
 const retargeted = retargetUnityLogfile(
 	'./RustDedicated -batchmode -logfile logs/$(date +%Y-%m-%d-%H%M).log ${ADDITIONAL_ARGS}'
@@ -273,13 +279,58 @@ deliver("stderr", "Processing World");
 deliver("stderr", "Processing World");
 deliver("stderr", "gpath.c:115: assertion 'filename != NULL' failed");
 deliver("file", "only in the unity log");
+deliver("rcon", "hostname: My Rust Server");
+deliver("stdout", "Loaded plugin NTeleportation v1.5.6 by GA [513ms]");
+deliver("rcon", "Loaded plugin NTeleportation v1.5.6 by GA [513ms]");
 assert.deepStrictEqual(delivered, [
 	"stdout:Loaded plugin NTeleportation v1.5.6 by GA [513ms]",
 	"stdout:Server startup complete",
 	"stdout:Processing World",
 	"stdout:Processing World",
 	"stderr:gpath.c:115: assertion 'filename != NULL' failed",
-	"file:only in the unity log"
+	"file:only in the unity log",
+	"rcon:hostname: My Rust Server",
+	"stdout:Loaded plugin NTeleportation v1.5.6 by GA [513ms]"
+]);
+
+const reloadLines = [];
+const reloadDedupe = createLogLineDeduper();
+function emitReload(source, text) {
+	const parts = String(text).replace(/\r/g, "").split("\n");
+	for (let i = 0; i < parts.length; i++) {
+		if (!parts[i]) continue;
+		if (!reloadDedupe(source, parts[i])) continue;
+		reloadLines.push(source + ":" + parts[i]);
+	}
+}
+emitReload("stdout", "> o.reload Toasty");
+emitReload("stdout", "Unloaded plugin Toasty v1.2.7 by Werewolf");
+emitReload("stdout", "Loaded plugin Toasty v1.2.7 by Werewolf");
+emitReload("stdout", "Loaded plugin Toasty v1.2.7 by Werewolf");
+const reloadTracker = createRconCommandTracker();
+const reloadId = reloadTracker.allocate();
+const reloadRcon = createRconMessageHandler(
+	(data) => [JSON.parse(String(data))],
+	{
+		tracker: reloadTracker,
+		write: (text) => emitReload("rcon", text)
+	}
+);
+reloadRcon(Buffer.from(JSON.stringify({
+	Identifier: reloadId,
+	Message: "Unloaded plugin Toasty v1.2.7 by Werewolf\nLoaded plugin Toasty v1.2.7 by Werewolf"
+})));
+reloadRcon(Buffer.from(JSON.stringify({
+	Identifier: reloadId,
+	Message: "hostname: GRUB.ARMY\nplayers : 0 (200 max)"
+})));
+assert.deepStrictEqual(reloadLines, [
+	"stdout:> o.reload Toasty",
+	"stdout:Unloaded plugin Toasty v1.2.7 by Werewolf",
+	"stdout:Loaded plugin Toasty v1.2.7 by Werewolf",
+	"stdout:Loaded plugin Toasty v1.2.7 by Werewolf",
+	"rcon:hostname: GRUB.ARMY",
+	"rcon:players : 0 (200 max)"
 ]);
 
 // Static integration guardrails for the wrapper's actual child, stdin, and RCON paths.
@@ -296,6 +347,8 @@ assert.match(wrapper, /createConsoleInputHandler\(/);
 assert.match(wrapper, /rl\.on\("line",\s*handleConsoleLine\)/);
 assert.match(wrapper, /const writePanel = \(text\) => emitShared\("stdout", text\);/);
 assert.match(wrapper, /const writeStderr = \(text\) => emitShared\("stderr", text\);/);
+assert.match(wrapper, /const writeRcon = \(text\) => emitShared\("rcon", text\);/);
+assert.match(wrapper, /write: writeRcon/);
 assert.match(wrapper, /createGameOutputHandler\(writeStderr,/);
 assert.match(wrapper, /console\.log\(block\);/);
 assert.match(wrapper, /retargetUnityLogfile\(startupCmd\)/);
@@ -303,7 +356,7 @@ assert.match(wrapper, /followUnityLog\(unityLogPath\)/);
 assert.match(wrapper, /if \(!line \|\| hasLogTimestamp\(line\)\) continue;/);
 
 const egg = JSON.parse(fs.readFileSync("./egg-rust--all-in-one4-0-staging.json", "utf8"));
-assert.strictEqual(egg.name, "Rust - All In One 4.0 (Staging)");
+assert.strictEqual(egg.name, "GA Rust 1.0 Staging");
 assert.strictEqual(
 	egg.meta.update_url,
 	"https://raw.githubusercontent.com/evlaar-online/aioegg-staging/main/egg-rust--all-in-one4-0-staging.json"

@@ -84,6 +84,7 @@ function emitShared(source, text) {
 
 const writePanel = (text) => emitShared("stdout", text);
 const writeStderr = (text) => emitShared("stderr", text);
+const writeRcon = (text) => emitShared("rcon", text);
 
 var args = process.argv.splice(process.execArgv.length + 2);
 for (var i = 0; i < args.length; i++) {
@@ -359,7 +360,7 @@ function payloadsFromFrame(data) {
 
 const handleRconMessage = createRconMessageHandler(payloadsFromFrame, {
 	tracker: rconTracker,
-	write: writePanel
+	write: writeRcon
 });
 
 var poll = function () {

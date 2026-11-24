@@ -95,6 +95,14 @@ function createRconCommandTracker(options = {}) {
 	};
 }
 
+function isUnsolicitedRconBroadcast(rawId) {
+	if (typeof rawId !== "number" && (typeof rawId !== "string" || rawId.trim() === "")) {
+		return true;
+	}
+	const id = Number(rawId);
+	return !Number.isInteger(id) || id <= 0;
+}
+
 function createRconMessageHandler(parseFrame, options = {}) {
 	const tracker = options.tracker || null;
 	const write = typeof options.write === "function" ? options.write : () => {};
@@ -114,6 +122,8 @@ function createRconMessageHandler(parseFrame, options = {}) {
 				markReady();
 			}
 
+			// Server console broadcasts use Identifier <= 0 and are already on stdout.
+			if (isUnsolicitedRconBroadcast(json.Identifier)) continue;
 			if (!tracker || !tracker.has(json.Identifier)) continue;
 
 			if (typeof json.Message === "string" && json.Message.length > 0) {
@@ -275,9 +285,10 @@ function retargetUnityLogfile(startup) {
 	return { startup: out, unityLogPath };
 }
 
-// One player-log occurrence may arrive on stdout, stderr, and the Unity log file.
-// The first source is kept. Later sources of that same occurrence are dropped.
-// A repeated line on the same source is a new occurrence and is kept.
+// One player-log occurrence may arrive on stdout, stderr, the Unity log file,
+// and again inside a tracked RCON command reply. The first source is kept.
+// A later source of that same occurrence is dropped. A repeated line on the
+// same source is a new occurrence and is kept.
 function createLogLineDeduper(limit) {
 	const max = typeof limit === "number" && limit > 0 ? Math.floor(limit) : 500;
 	const slots = [];
@@ -317,6 +328,7 @@ function createTimestampedLogWriter(options) {
 module.exports = {
 	createGameOutputHandler,
 	createRconCommandTracker,
+	isUnsolicitedRconBroadcast,
 	createRconMessageHandler,
 	createConsoleInputHandler,
 	formatPosixDate,
