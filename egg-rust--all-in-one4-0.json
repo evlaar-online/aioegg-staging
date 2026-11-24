@@ -5,7 +5,7 @@
         "update_url": "https://raw.githubusercontent.com/evlaar-online/aioegg/master/egg-rust--all-in-one4-0.json"
     },
     "exported_at": "2025-11-07T00:18:01-07:00",
-    "name": "Rust - All In One 4.0",
+    "name": "GA Rust 1.0",
     "author": "support@pterodactyl.io",
     "description": "The only aim in Rust is to survive. To do this you will need to overcome struggles such as hunger, thirst and cold. Build a fire. Build a shelter. Kill animals for meat. Protect yourself from other players, and kill them for meat. Create alliances with other players and form a town. Do whatever it takes to survive.",
     "features": [
@@ -187,7 +187,7 @@
             "name": "Query Port",
             "description": "Server Query Port. Can't be the same as Game's primary port.",
             "env_variable": "QUERY_PORT",
-            "default_value": "27017",
+            "default_value": "28016",
             "user_viewable": true,
             "user_editable": true,
             "rules": "required|integer",
