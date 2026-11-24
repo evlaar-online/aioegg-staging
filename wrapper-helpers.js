@@ -192,10 +192,11 @@ function formatPosixDate(format, date) {
 }
 
 function formatLogTimestamp(date) {
-	return formatPosixDate("%Y-%m-%d %H:%M:%S", date);
+	return formatPosixDate("%d-%m-%Y %H:%M:%S", date);
 }
 
-const LOG_TIMESTAMP_PREFIX = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) /;
+// Current d-m-Y stamps, plus the previous Y-m-d stamps so a followed log is not stamped twice.
+const LOG_TIMESTAMP_PREFIX = /^(?:(\d{2}-\d{2}-\d{4})|(\d{4}-\d{2}-\d{2})) \d{2}:\d{2}:\d{2} /;
 
 function hasLogTimestamp(line) {
 	return LOG_TIMESTAMP_PREFIX.test(String(line));
@@ -274,25 +275,23 @@ function retargetUnityLogfile(startup) {
 	return { startup: out, unityLogPath };
 }
 
-// Drops a line when stdout and a followed Unity log both deliver the same occurrence.
+// One player-log occurrence may arrive on stdout, stderr, and the Unity log file.
+// The first source is kept. Later sources of that same occurrence are dropped.
+// A repeated line on the same source is a new occurrence and is kept.
 function createLogLineDeduper(limit) {
 	const max = typeof limit === "number" && limit > 0 ? Math.floor(limit) : 500;
-	const pending = { stdout: [], file: [] };
+	const slots = [];
 
 	return function accept(source, rawLine) {
 		const key = unstampedLogLine(rawLine);
 		if (!key) return false;
-		const otherName = source === "file" ? "stdout" : "file";
-		const mineName = source === "file" ? "file" : "stdout";
-		const other = pending[otherName];
-		const idx = other.indexOf(key);
-		if (idx !== -1) {
-			other.splice(idx, 1);
+		const existing = slots.find((slot) => slot.key === key && !slot.seen[source]);
+		if (existing) {
+			existing.seen[source] = true;
 			return false;
 		}
-		const mine = pending[mineName];
-		mine.push(key);
-		if (mine.length > max) mine.shift();
+		slots.push({ key, seen: { [source]: true } });
+		if (slots.length > max) slots.shift();
 		return true;
 	};
 }

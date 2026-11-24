@@ -215,7 +215,7 @@ assert.deepStrictEqual(noEchoOut, []);
 
 // Every delivered line gets one timestamp, including text that is shown on the console.
 const fixedNow = new Date(2026, 10, 15, 21, 4, 5);
-assert.strictEqual(formatLogTimestamp(fixedNow), "2026-11-15 21:04:05");
+assert.strictEqual(formatLogTimestamp(fixedNow), "15-11-2026 21:04:05");
 assert.strictEqual(
 	expandLogFilePath("logs/$(date +%Y-%m-%d-%H%M).log", (format) => formatPosixDate(format, fixedNow)),
 	"logs/2026-11-15-2104.log"
@@ -234,12 +234,15 @@ writeStamped("Server startup complete");
 writeStamped("hostname: My Rust Server\nplayers : 12");
 writeStamped("");
 assert.deepStrictEqual(stamped, [
-	"2026-11-15 21:04:05 Server startup complete\n",
-	"2026-11-15 21:04:05 hostname: My Rust Server\n2026-11-15 21:04:05 players : 12\n"
+	"15-11-2026 21:04:05 Server startup complete\n",
+	"15-11-2026 21:04:05 hostname: My Rust Server\n15-11-2026 21:04:05 players : 12\n"
 ]);
+writeStamped("15-11-2026 21:04:05 Server startup complete");
 writeStamped("2026-11-15 21:04:05 Server startup complete");
+assert.strictEqual(stamped.at(-2), "15-11-2026 21:04:05 Server startup complete\n");
 assert.strictEqual(stamped.at(-1), "2026-11-15 21:04:05 Server startup complete\n");
 assert.ok(stampLogLines("Server startup complete", fixedNow)[0].includes("Server startup complete"));
+assert.strictEqual(hasLogTimestamp("15-11-2026 21:04:05 Server startup complete"), true);
 assert.strictEqual(hasLogTimestamp("2026-11-15 21:04:05 Server startup complete"), true);
 assert.strictEqual(hasLogTimestamp("Server startup complete"), false);
 
@@ -259,15 +262,23 @@ function deliver(source, line) {
 	if (!acceptLogLine(source, line)) return;
 	delivered.push(source + ":" + line);
 }
+deliver("stdout", "Loaded plugin NTeleportation v1.5.6 by GA [513ms]");
+deliver("stderr", "Loaded plugin NTeleportation v1.5.6 by GA [513ms]");
+deliver("file", "Loaded plugin NTeleportation v1.5.6 by GA [513ms]");
 deliver("stdout", "Server startup complete");
 deliver("file", "Server startup complete");
 deliver("stdout", "Processing World");
 deliver("stdout", "Processing World");
+deliver("stderr", "Processing World");
+deliver("stderr", "Processing World");
+deliver("stderr", "gpath.c:115: assertion 'filename != NULL' failed");
 deliver("file", "only in the unity log");
 assert.deepStrictEqual(delivered, [
+	"stdout:Loaded plugin NTeleportation v1.5.6 by GA [513ms]",
 	"stdout:Server startup complete",
 	"stdout:Processing World",
 	"stdout:Processing World",
+	"stderr:gpath.c:115: assertion 'filename != NULL' failed",
 	"file:only in the unity log"
 ]);
 
@@ -284,6 +295,8 @@ assert.match(wrapper, /createRconCommandTracker\(/);
 assert.match(wrapper, /createConsoleInputHandler\(/);
 assert.match(wrapper, /rl\.on\("line",\s*handleConsoleLine\)/);
 assert.match(wrapper, /const writePanel = \(text\) => emitShared\("stdout", text\);/);
+assert.match(wrapper, /const writeStderr = \(text\) => emitShared\("stderr", text\);/);
+assert.match(wrapper, /createGameOutputHandler\(writeStderr,/);
 assert.match(wrapper, /console\.log\(block\);/);
 assert.match(wrapper, /retargetUnityLogfile\(startupCmd\)/);
 assert.match(wrapper, /followUnityLog\(unityLogPath\)/);

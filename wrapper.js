@@ -83,6 +83,7 @@ function emitShared(source, text) {
 }
 
 const writePanel = (text) => emitShared("stdout", text);
+const writeStderr = (text) => emitShared("stderr", text);
 
 var args = process.argv.splice(process.execArgv.length + 2);
 for (var i = 0; i < args.length; i++) {
@@ -229,10 +230,10 @@ if (_monoLogging) {
     }
 }
 
-// Child stdout/stderr are the sole source of game output in the panel. Each
-// stream has exactly one permanent listener for the lifetime of the process.
+// Stdout supplies the player log. Stderr is a separate source so an identical
+// Unity/Carbon line on both streams is kept once, while a stderr-only error still prints.
 gameProcess.stdout.on("data", createGameOutputHandler(writePanel, filterLine, () => monoLogStream));
-gameProcess.stderr.on("data", createGameOutputHandler(writePanel, filterLine, () => monoLogStream));
+gameProcess.stderr.on("data", createGameOutputHandler(writeStderr, filterLine, () => monoLogStream));
 gameProcess.on('exit', function (code, signal) {
 	exited = true;
 	stopRconLifecycle();
